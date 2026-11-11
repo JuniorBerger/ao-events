@@ -820,6 +820,74 @@ h3 { font-size: 1.25rem; }
   background: var(--blanc);
 }
 
+/* ---------- Ambiance messagerie (façon WhatsApp, charte AO) ---------- */
+.chat-messages {
+  background-color: #f2ead8;
+  background-image:
+    radial-gradient(rgba(180, 85, 45, 0.055) 1px, transparent 1.4px),
+    radial-gradient(rgba(20, 38, 28, 0.045) 1px, transparent 1.4px);
+  background-size: 22px 22px, 34px 34px;
+  background-position: 0 0, 9px 13px;
+}
+.chat-msg.user {
+  background: #d9fdd3;
+  color: #20331f;
+  box-shadow: 0 1px 1px rgba(20, 38, 28, 0.1);
+}
+.chat-time {
+  display: block;
+  text-align: right;
+  font-size: 0.62rem;
+  line-height: 1.2;
+  margin-top: 0.22rem;
+  color: rgba(92, 85, 75, 0.75);
+}
+.chat-msg.user .chat-time { color: rgba(46, 84, 52, 0.72); }
+
+.chat-status {
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+  font-size: 0.72rem;
+  color: #bfe3c0;
+  margin-top: 0.22rem;
+}
+.chat-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3ecf5a;
+  box-shadow: 0 0 0 2px rgba(62, 207, 90, 0.25);
+  flex: none;
+}
+
+.chat-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-style: italic;
+  font-size: 0.82rem;
+  color: var(--texte-doux);
+}
+.typing-dots { display: inline-flex; gap: 3px; }
+.typing-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--terracotta);
+  display: block;
+  animation: typingBounce 1.1s infinite ease-in-out;
+}
+.typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+.chat-form input:disabled { opacity: 0.55; cursor: not-allowed; }
+.chat-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ---------- Responsive chatbot / modale ---------- */
 @media (max-width: 620px) {
   .chat-panel {
@@ -1183,7 +1251,8 @@ h3 { font-size: 1.25rem; }
   <div class="chat-header">
     <div class="chat-header-text">
       <p class="chat-title">Célia — Assistante AO Évents <span class="chat-demo-badge">DÉMO</span></p>
-      <p class="chat-subtitle">Assistante automatique — je ne suis pas un humain.</p>
+      <p class="chat-status"><span class="chat-status-dot"></span>en ligne — répond tout de suite (démo)</p>
+      <p class="chat-subtitle">Assistante stagiaire automatique — je ne suis pas un humain.</p>
     </div>
     <div class="chat-header-actions">
       <button type="button" id="aoChatRestart" class="chat-head-btn" title="Recommencer la conversation">↺ Recommencer</button>
@@ -1237,9 +1306,14 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 /* ============================================================
-   AO Évents — Modale Google Maps + Assistant de qualification (démo)
+   AO Évents — Modale Google Maps + Célia, assistante stagiaire (démo)
    JS vanilla, aucune librairie externe. Aucun prix n'est jamais
    affiché ; seul le manager confirme disponibilité et réservation.
+   Célia vérifie la cohérence des réponses (invités, dates, nom,
+   budget) avec empathie et un humour léger, sans jamais bloquer
+   définitivement un visiteur : après 2 tentatives ratées sur un
+   champ, la réponse est acceptée et marquée « à confirmer par
+   le manager » dans la fiche.
    ============================================================ */
 document.addEventListener("DOMContentLoaded", function () {
   "use strict";
@@ -1314,8 +1388,12 @@ document.addEventListener("DOMContentLoaded", function () {
       answers: {
         eventType: "", date: "", dateFlex: "", guests: null,
         quartier: "", prestations: [], budget: "", budgetSkipped: false,
-        name: "", contact: ""
+        name: "", contact: "",
+        dateStatus: "ok", guestsUnclear: false, nameUnclear: false
       },
+      attempts: { guests: 0, date: 0, datePast: 0, name: 0 },
+      pendingGuests: null,
+      pendingDate: null,
       suggestions: [],
       level: "",
       fiche: "",
@@ -1331,6 +1409,13 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!raw) return null;
       var parsed = JSON.parse(raw);
       if (!parsed || !Array.isArray(parsed.messages)) return null;
+      // Fusion avec les valeurs par défaut : les anciennes conversations
+      // enregistrées ne connaissent pas les nouveaux champs.
+      var fresh = freshState();
+      parsed.answers = Object.assign(fresh.answers, parsed.answers || {});
+      parsed.attempts = Object.assign(fresh.attempts, parsed.attempts || {});
+      if (parsed.pendingGuests === undefined) parsed.pendingGuests = null;
+      if (parsed.pendingDate === undefined) parsed.pendingDate = null;
       return parsed;
     } catch (e) { return null; }
   }
@@ -1342,9 +1427,22 @@ document.addEventListener("DOMContentLoaded", function () {
   var chipsEl = document.getElementById("aoChatChips");
   var form = document.getElementById("aoChatForm");
   var input = document.getElementById("aoChatInput");
+  var sendBtn = form ? form.querySelector(".chat-send") : null;
   var closeBtn = document.getElementById("aoChatClose");
   var restartBtn = document.getElementById("aoChatRestart");
   if (!chatBtn || !panel || !messagesEl || !chipsEl || !form || !input) return;
+
+  function setFormEnabled(on) {
+    input.disabled = !on;
+    if (sendBtn) sendBtn.disabled = !on;
+  }
+
+  /* ---------------- Horodatage ---------------- */
+  function nowTime() {
+    var d = new Date();
+    var h = d.getHours(), m = d.getMinutes();
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
 
   /* ---------------- Rendu ---------------- */
   function scrollToBottom() {
@@ -1375,8 +1473,14 @@ document.addEventListener("DOMContentLoaded", function () {
       });
       div.appendChild(copy);
     } else {
-      div.textContent = msg.text;
+      var span = document.createElement("span");
+      span.textContent = msg.text;
+      div.appendChild(span);
     }
+    var time = document.createElement("span");
+    time.className = "chat-time";
+    time.textContent = msg.time || "";
+    div.appendChild(time);
     messagesEl.appendChild(div);
   }
   function renderAllMessages() {
@@ -1404,15 +1508,76 @@ document.addEventListener("DOMContentLoaded", function () {
     if (done) done();
   }
 
-  function botSay(text, kind) {
-    var msg = { from: "bot", text: text, kind: kind || "text" };
-    state.messages.push(msg);
-    renderMessage(msg);
+  /* -------- File de messages du bot + indicateur de frappe --------
+     Célia « écrit » avant chaque message : une bulle « Célia est en
+     train d'écrire… » avec des points animés, pendant une durée
+     proportionnelle à la longueur du message (600 à 2 200 ms).
+     Pendant la frappe initiale, le formulaire est désactivé ; ensuite,
+     un message envoyé pendant la frappe est simplement mis en file. */
+  var botQueue = [];
+  var botBusy = false;
+  var userBacklog = [];
+  var initialLock = false;
+  var typingEl = null;
+
+  function showTyping() {
+    hideTyping();
+    typingEl = document.createElement("div");
+    typingEl.className = "chat-msg bot chat-typing";
+    var label = document.createElement("span");
+    label.className = "typing-label";
+    label.textContent = ASSISTANTE + " est en train d'écrire";
+    typingEl.appendChild(label);
+    var dots = document.createElement("span");
+    dots.className = "typing-dots";
+    for (var i = 0; i < 3; i++) dots.appendChild(document.createElement("i"));
+    typingEl.appendChild(dots);
+    messagesEl.appendChild(typingEl);
     scrollToBottom();
+  }
+  function hideTyping() {
+    if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
+    typingEl = null;
+  }
+  function botSend(msg) {
+    if (!msg.time) msg.time = nowTime();
+    state.messages.push(msg);
     save();
+    botQueue.push(msg);
+    pumpBot();
+  }
+  function botSay(text, kind) {
+    botSend({ from: "bot", text: text, kind: kind || "text" });
+  }
+  function pumpBot() {
+    if (botBusy) return;
+    var msg = botQueue.shift();
+    if (!msg) { onBotIdle(); return; }
+    botBusy = true;
+    showTyping();
+    var delay = Math.max(600, Math.min(2200, 420 + msg.text.length * 8));
+    setTimeout(function () {
+      hideTyping();
+      renderMessage(msg);
+      scrollToBottom();
+      botBusy = false;
+      pumpBot();
+    }, delay);
+  }
+  function onBotIdle() {
+    renderChips();
+    save();
+    if (initialLock) {
+      initialLock = false;
+      setFormEnabled(true);
+    }
+    if (userBacklog.length) {
+      var t = userBacklog.shift();
+      processUserText(t);
+    }
   }
   function userSay(text) {
-    var msg = { from: "user", text: text, kind: "text" };
+    var msg = { from: "user", text: text, kind: "text", time: nowTime() };
     state.messages.push(msg);
     renderMessage(msg);
     scrollToBottom();
@@ -1426,6 +1591,14 @@ document.addEventListener("DOMContentLoaded", function () {
       case "date_flex": return [
         { label: "Définitive", value: "Définitive" },
         { label: "Flexible", value: "Flexible" }
+      ];
+      case "guests_confirm": return [
+        { label: "C'est bien ça", value: "__guests_ok__" },
+        { label: "Je corrige", value: "__guests_fix__" }
+      ];
+      case "date_today": return [
+        { label: "Oui, c'est aujourd'hui", value: "__date_ok__" },
+        { label: "Non, je corrige", value: "__date_fix__" }
       ];
       case "quartier": return KB.quartiers.map(function (v) { return { label: v, value: v }; });
       case "prestations": {
@@ -1446,6 +1619,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
   function renderChips() {
+    // Pendant que Célia écrit, les chips de l'étape précédente restent
+    // en place mais ne sont pas ré-affichés ; ils le seront au repos.
+    if (botBusy || botQueue.length) return;
     chipsEl.innerHTML = "";
     chipsForStep().forEach(function (chip) {
       var b = document.createElement("button");
@@ -1470,7 +1646,10 @@ document.addEventListener("DOMContentLoaded", function () {
     state = freshState();
     save();
     renderAllMessages();
-    botSay("Bonjour et bienvenue chez AO Évents ! 🌸 Je suis " + ASSISTANTE + ", l'assistante de l'agence — « Ensemble, créons des souvenirs ».\n\nJe suis ravie de vous accueillir. Je vais vous poser quelques questions courtes pour préparer votre demande : elle sera ensuite transmise à notre manager, " + KB.manager + ", qui confirmera personnellement la disponibilité et le devis.\n\nPetite précision, en toute honnêteté : je suis une assistante automatique, pas un humain — mais je ferai de mon mieux pour vous aider 🙂");
+    // Au tout début, on ne peut pas répondre pendant que Célia écrit.
+    initialLock = true;
+    setFormEnabled(false);
+    botSay("Bonjour et bienvenue chez AO Évents ! 🌸 Je suis " + ASSISTANTE + ", l'assistante stagiaire de l'agence — « Ensemble, créons des souvenirs ».\n\nJe suis ravie de vous accueillir ! Je suis encore en formation, mais je suis supervisée par notre manager, " + KB.manager + " : je vais vous poser quelques questions courtes pour préparer votre demande, et c'est lui qui confirmera personnellement la disponibilité et le devis.\n\nPetite précision, en toute honnêteté : je suis une assistante automatique, pas un humain — mais je ferai de mon mieux pour vous aider 🙂");
     ask("event_type", "Pour commencer, parlons de votre beau projet : quel type d'événement organisez-vous ?");
   }
 
@@ -1486,6 +1665,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function proposeSalles() {
     var a = state.answers;
     var guests = a.guests || 0;
+    var guestsLabel = a.guestsUnclear ? "à confirmer avec le manager" : String(guests);
     var fitting = KB.salles.filter(function (s) { return s.capMax >= guests; });
     var ordered = fitting.slice();
     if (a.quartier && a.quartier !== "Pas de préférence") {
@@ -1500,7 +1680,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var recap = "Merci pour toutes ces réponses ! Je récapitule votre projet :\n" +
       "• Événement : " + a.eventType + "\n" +
       "• Date : " + a.date + (a.dateFlex ? " (" + a.dateFlex.toLowerCase() + ")" : "") + "\n" +
-      "• Invités : " + guests + "\n" +
+      "• Invités : " + guestsLabel + "\n" +
       "• Quartier souhaité : " + a.quartier + "\n" +
       "• Prestations : " + (a.prestations.length ? a.prestations.join(", ") : "à préciser") + "\n" +
       "• Budget : " + (a.budgetSkipped ? "non communiqué" : a.budget);
@@ -1509,7 +1689,13 @@ document.addEventListener("DOMContentLoaded", function () {
       botSay("Et rassurez-vous : ne pas avoir communiqué de budget ne pose vraiment aucun problème — c'est tout à fait compréhensible à ce stade, et le manager en discutera avec vous en toute tranquillité.");
     }
 
-    if (guests > KB.capMaxReseau) {
+    if (a.guestsUnclear) {
+      var allLines = ordered.map(function (s) {
+        var star = (a.quartier && s.quartier === a.quartier) ? " ⭐ (votre quartier)" : "";
+        return "• " + s.nom + " — " + s.quartier + " · " + s.capLabel + star;
+      });
+      botSay("Comme votre nombre d'invités reste à confirmer, je vous présente l'ensemble de nos salles partenaires :\n" + allLines.join("\n") + "\n\nLe manager affinera la sélection avec vous, selon votre effectif. Rappel : seul le manager confirme la disponibilité d'une salle pour votre date.");
+    } else if (guests > KB.capMaxReseau) {
       botSay("Je suis désolée, je dois être honnête avec vous : notre plus grande salle, Christeneil (Ondogo), accueille jusqu'à " + KB.capMaxReseau + " personnes — c'est la capacité maximale de notre réseau. Pour " + guests + " invités, aucune de nos salles ne suffit en l'état, mais notre manager étudiera votre demande avec attention et vous dira ce qui est envisageable.");
       state.suggestions = ["Christeneil"];
     } else if (ordered.length) {
@@ -1526,18 +1712,24 @@ document.addEventListener("DOMContentLoaded", function () {
     ask("name", "Nous y sommes presque ! Pour transmettre votre fiche au manager, quel est votre nom complet ?");
   }
 
+  function guestsDisplay() {
+    var a = state.answers;
+    if (a.guestsUnclear) return "à confirmer par le manager";
+    if (a.guests !== null && a.guests !== undefined) return String(a.guests);
+    return "non précisé";
+  }
   function buildFiche(withLevel) {
     var a = state.answers;
     var lines = [
       "📋 FICHE DE DEMANDE — AO ÉVENTS",
       "Événement : " + a.eventType,
       "Date : " + a.date + (a.dateFlex ? " (" + a.dateFlex.toLowerCase() + ")" : ""),
-      "Invités : " + (a.guests !== null && a.guests !== undefined ? a.guests : "non précisé"),
+      "Invités : " + guestsDisplay(),
       "Quartier souhaité : " + a.quartier,
       "Prestations : " + (a.prestations.length ? a.prestations.join(", ") : "à préciser"),
       "Budget : " + (a.budgetSkipped ? "non communiqué" : a.budget),
       "Salles proposées : " + (state.suggestions.length ? state.suggestions.join(", ") : "à étudier par le manager"),
-      "Nom : " + a.name,
+      "Nom : " + a.name + (a.nameUnclear ? " (à confirmer par le manager)" : ""),
       "Contact préféré : " + a.contact
     ];
     if (withLevel) lines.push("Niveau du lead : " + state.level);
@@ -1546,8 +1738,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function computeLevel() {
     var a = state.answers;
-    var dateDefinitive = a.dateFlex === "Définitive" && !!a.date;
-    var hasGuests = a.guests !== null && a.guests !== undefined && a.guests > 0;
+    // Une date forcée bien que passée, ou une date restée imprécise,
+    // compte comme une date « floue » : elle ne peut pas faire un lead Chaud.
+    var dateOk = !a.dateStatus || a.dateStatus === "ok";
+    var dateDefinitive = a.dateFlex === "Définitive" && !!a.date && dateOk;
+    var hasGuests = typeof a.guests === "number" && a.guests > 0;
     var hasBudget = !a.budgetSkipped && !!a.budget;
     if (dateDefinitive && hasGuests && hasBudget) return "Chaud";
     if (a.eventType && hasGuests) return "Tiède";
@@ -1558,22 +1753,216 @@ document.addEventListener("DOMContentLoaded", function () {
     state.level = computeLevel();
     state.fiche = buildFiche(true);
     state.step = "done";
-    botSay("Merci beaucoup, " + state.answers.name + " ! 🌸 Je suis ravie d'avoir pu préparer votre demande avec vous. Elle est classée « lead " + state.level + " ».\n\nJe transmets votre fiche à notre manager, " + KB.manager + " : c'est lui qui confirmera la disponibilité, le devis et la réservation, et qui reviendra vers vous. Je ne peux pas vous promettre de délai de réponse.\n\nPour aller plus vite, vous pouvez aussi envoyer votre fiche directement à l'agence sur WhatsApp :\n\n— " + ASSISTANTE + ", votre assistante AO Évents");
-    var finalMsg = { from: "bot", text: state.fiche, kind: "final" };
-    state.messages.push(finalMsg);
-    renderMessage(finalMsg);
-    scrollToBottom();
+    botSay("Merci beaucoup, " + state.answers.name + " ! 🌸 Je suis ravie d'avoir pu préparer votre demande avec vous. Elle est classée « lead " + state.level + " ».\n\nJe transmets votre fiche à notre manager, " + KB.manager + " : c'est lui qui confirmera la disponibilité, le devis et la réservation, et qui reviendra vers vous. Je ne peux pas vous promettre de délai de réponse.\n\nPour aller plus vite, vous pouvez aussi envoyer votre fiche directement à l'agence sur WhatsApp :\n\n— " + ASSISTANTE + ", votre assistante stagiaire AO Évents");
+    botSend({ from: "bot", text: state.fiche, kind: "final" });
     renderChips();
     save();
   }
 
-  /* ---------------- Réponses libres : base de connaissance ---------------- */
+  /* ---------------- Cerveau de cohérence ---------------- */
   function norm(s) {
     return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
+  function extractNumber(text) {
+    if (!text) return null;
+    var cleaned = String(text).replace(/(\d)[\s\u00a0\u202f]+(?=\d)/g, "$1");
+    var m = cleaned.match(/\d+/);
+    return m ? parseInt(m[0], 10) : null;
+  }
+
+  /* ----- Dates françaises ----- */
+  var MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+  var WEEKDAYS_FR = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+  var MONTHS_NORM = {};
+  MONTHS_FR.forEach(function (mo, i) { MONTHS_NORM[norm(mo)] = i + 1; });
+
+  function startOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+  function parseFrenchDate(text) {
+    if (!text) return null;
+    var t = norm(text);
+    var weekdayGiven = -1, wi;
+    for (wi = 0; wi < WEEKDAYS_FR.length; wi++) {
+      if (t.indexOf(WEEKDAYS_FR[wi]) !== -1) { weekdayGiven = wi; break; }
+    }
+    var day = null, month = null, year = null, m;
+    if ((m = t.match(/(\d{4})-(\d{1,2})-(\d{1,2})/))) {
+      year = +m[1]; month = +m[2]; day = +m[3];
+    } else if ((m = t.match(/(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?/))) {
+      day = +m[1]; month = +m[2];
+      if (m[3]) { year = +m[3]; if (year < 100) year += 2000; }
+    } else {
+      var monthNames = Object.keys(MONTHS_NORM).join("|");
+      var re = new RegExp("(\\d{1,2})\\s+(" + monthNames + ")\\s*(\\d{4})?");
+      if ((m = t.match(re))) {
+        day = +m[1]; month = MONTHS_NORM[m[2]];
+        if (m[3]) year = +m[3];
+      }
+    }
+    if (day === null || month === null || day < 1 || day > 31 || month < 1 || month > 12) return null;
+    var yearDeduced = false;
+    var today = startOfDay(new Date());
+    if (year === null) {
+      yearDeduced = true;
+      var candidate = new Date(today.getFullYear(), month - 1, day);
+      year = candidate < today ? today.getFullYear() + 1 : today.getFullYear();
+    }
+    var date = new Date(year, month - 1, day);
+    if (date.getDate() !== day || date.getMonth() !== month - 1) return null; // ex. 30 février
+    return {
+      date: date, day: day, month: month, year: year,
+      yearDeduced: yearDeduced,
+      weekdayGiven: weekdayGiven,
+      weekdayMismatch: weekdayGiven !== -1 && weekdayGiven !== date.getDay(),
+      weekdayName: WEEKDAYS_FR[date.getDay()],
+      label: WEEKDAYS_FR[date.getDay()] + " " + day + " " + MONTHS_FR[month - 1] + " " + year
+    };
+  }
+
+  function acceptDate(parsed) {
+    state.answers.date = parsed.label;
+    state.answers.dateStatus = "ok";
+    state.pendingDate = null;
+    state.attempts.date = 0;
+    state.attempts.datePast = 0;
+    var notes = [];
+    if (parsed.yearDeduced) {
+      notes.push("Je pars donc sur le " + parsed.label + " — l'année n'était pas précisée, je retiens la prochaine fois où cette date arrive 📝");
+    }
+    if (parsed.weekdayMismatch) {
+      notes.push("Petite remarque, en passant : le " + parsed.day + " " + MONTHS_FR[parsed.month - 1] + " " + parsed.year + " tombe en réalité un " + parsed.weekdayName + " — je garde donc la date chiffrée, c'est elle qui compte 🙂");
+    }
+    if (notes.length) botSay(notes.join("\n"));
+    save();
+    ask("date_flex", (notes.length ? "" : "C'est bien noté 📝 ") + "Cette date est-elle définitive, ou encore flexible ?");
+  }
+
+  function processDate(text) {
+    var parsed = parseFrenchDate(text);
+    var today = startOfDay(new Date());
+    if (!parsed) {
+      state.attempts.date++;
+      if (state.attempts.date >= 2) {
+        state.answers.date = text + " (date à préciser avec le manager)";
+        state.answers.dateStatus = "unparsed";
+        state.attempts.date = 0;
+        save();
+        botSay("D'accord, je la note exactement comme vous l'avez écrite — et je signale au manager qu'il faudra la préciser avec vous. On continue, promis, je ne vous bloque pas 🙂");
+        ask("date_flex", "Cette date est-elle définitive, ou encore flexible ?");
+        return;
+      }
+      save();
+      botSay("Hmm, je n'ai pas réussi à reconnaître cette date — c'est de ma faute, je suis encore en formation 🤔 Pouvez-vous me l'écrire par exemple « 19 décembre 2026 » ou « 19/12/2026 » ?");
+      return;
+    }
+    if (parsed.date < today) {
+      state.attempts.datePast++;
+      if (state.attempts.datePast >= 2) {
+        state.answers.date = parsed.label + " ⚠️ (date déjà passée — à confirmer par le manager)";
+        state.answers.dateStatus = "past_forced";
+        state.attempts.datePast = 0;
+        state.pendingDate = null;
+        save();
+        botSay("Bien, je la note exactement comme vous l'indiquez — " + parsed.label + " — avec un petit mot pour le manager : cette date est déjà passée, il la confirmera avec vous 🙂 On continue !");
+        ask("date_flex", "Cette date est-elle définitive, ou encore flexible ?");
+        return;
+      }
+      save();
+      botSay("Je remarque que le " + parsed.label + " est déjà passé 🙂 Vous pensiez peut-être à une date l'année prochaine, ou à un autre jour ? Dites-moi la bonne date, je la note tout de suite.");
+      return;
+    }
+    if (parsed.date.getTime() === today.getTime()) {
+      state.pendingDate = {
+        label: parsed.label, day: parsed.day, month: parsed.month, year: parsed.year,
+        yearDeduced: parsed.yearDeduced, weekdayMismatch: parsed.weekdayMismatch,
+        weekdayName: parsed.weekdayName
+      };
+      state.step = "date_today";
+      state.currentQuestion = "Votre événement serait donc pour aujourd'hui même, " + parsed.label + " ? C'est bien pour aujourd'hui ?";
+      save();
+      botSay("Votre événement serait donc… aujourd'hui même, " + parsed.label + " ? 😄 C'est un sacré timing ! C'est bien pour aujourd'hui ?");
+      renderChips();
+      return;
+    }
+    acceptDate(parsed);
+  }
+
+  function resolveDateToday(ok) {
+    var p = state.pendingDate;
+    if (ok && p) {
+      acceptDate(p);
+    } else {
+      state.pendingDate = null;
+      save();
+      ask("date", "Pas de souci, on corrige 🙂 Dites-moi la bonne date — par exemple : samedi 19 décembre 2026.");
+    }
+  }
+
+  /* ----- Nombre d'invités ----- */
+  function acceptGuests(n) {
+    state.answers.guests = n;
+    state.answers.guestsUnclear = false;
+    state.pendingGuests = null;
+    state.attempts.guests = 0;
+    var reaction;
+    if (n <= 60) reaction = n + " invités — une belle fête en petit comité, c'est bien noté 📝";
+    else if (n <= 200) reaction = n + " invités, c'est bien noté 📝";
+    else reaction = n + " invités — une belle grande réception en perspective ! 🎉 C'est bien noté.";
+    save();
+    ask("quartier", reaction + "\n\nAvez-vous un quartier préféré pour la salle ?");
+  }
+
+  function processGuests(text) {
+    var n = extractNumber(text);
+    if (n === null || n <= 0) {
+      state.attempts.guests++;
+      if (state.attempts.guests >= 2) {
+        state.answers.guests = null;
+        state.answers.guestsUnclear = true;
+        state.attempts.guests = 0;
+        save();
+        botSay("Pas de problème, je ne vais pas vous bloquer là-dessus 🙂 Je note « nombre d'invités à confirmer » dans votre fiche, et le manager le précisera directement avec vous.");
+        ask("quartier", "Avez-vous un quartier préféré pour la salle ?");
+        return;
+      }
+      save();
+      if (n === 0) {
+        botSay("0 invité… ce serait une célébration bien silencieuse 🙂 Il y aura sûrement quelques proches pour trinquer, non ? Combien de personnes attendez-vous, environ ?");
+      } else {
+        botSay("Hmm, je n'ai pas réussi à lire un nombre d'invités dans votre message — je débute, pardon 🤔 Pouvez-vous me le donner en chiffres, par exemple « environ 150 » ?");
+      }
+      return;
+    }
+    if (n > KB.capMaxReseau) {
+      state.pendingGuests = n;
+      state.step = "guests_confirm";
+      state.currentQuestion = n > 2000
+        ? "Je vous ai bien lu : " + n + " invités ? C'est un nombre immense 😄 Avant de le noter, je préfère vérifier avec vous : n'y aurait-il pas un zéro de trop ?"
+        : "Je vous ai bien lu : " + n + " invités. C'est bien le nombre que vous aviez en tête ?";
+      save();
+      botSay(state.currentQuestion);
+      renderChips();
+      return;
+    }
+    acceptGuests(n);
+  }
+
+  function resolveGuestsConfirm(ok) {
+    var n = state.pendingGuests;
+    state.pendingGuests = null;
+    if (ok && typeof n === "number") {
+      acceptGuests(n);
+    } else {
+      state.attempts.guests = 0;
+      save();
+      ask("guests", "Aucun souci, on corrige 🙂 Combien d'invités attendez-vous, environ ?");
+    }
+  }
+
+  /* ---------------- Réponses libres : base de connaissance ---------------- */
   function detectIntent(text) {
     var t = norm(text);
-    if (/(robot|vraie? personne|qui es[- ]tu|ton nom|comment tu t'appelles|une machine|intelligence artificielle|\bia\b|es[- ]tu humaine|pas humaine|vraie femme)/.test(t)) return "identity";
+    if (/(robot|vraie? personne|qui es[- ]tu|ton nom|comment tu t'appelles|une machine|intelligence artificielle|\bia\b|es[- ]tu humaine|pas humaine|vraie femme|stagiaire)/.test(t)) return "identity";
     if (/(prix|tarif|combien ca coute|combien coute|coute combien|devis)/.test(t)) return "price";
     if (/(capacite|combien de personnes|combien de places|combien d'invites|places maximum)/.test(t)) return "capacity";
     if (/(disponib|reserver|reservation|bloquer la date|libre a cette date)/.test(t)) return "booking";
@@ -1586,7 +1975,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function faqAnswer(intent) {
     switch (intent) {
       case "identity":
-        return "Je m'appelle " + ASSISTANTE + " 🌸 Je suis l'assistante automatique d'AO Évents — un programme, donc pas un humain, même si j'essaie d'être aussi chaleureuse que possible 🙂 Je suis là pour préparer votre demande et la transmettre à notre manager, " + KB.manager + ", que vous pouvez aussi joindre directement sur WhatsApp au " + KB.whatsapp + " ou par e-mail à " + KB.email + ".";
+        return "Je m'appelle " + ASSISTANTE + " 🌸 Je suis l'assistante stagiaire automatique d'AO Évents — un programme, donc pas un humain, même si j'essaie d'être aussi chaleureuse que possible 🙂 Je suis en formation, supervisée par notre manager, " + KB.manager + ", à qui je transmets chaque demande. Vous pouvez aussi le joindre directement sur WhatsApp au " + KB.whatsapp + " ou par e-mail à " + KB.email + ".";
       case "price":
         return "C'est une question tout à fait légitime 🙂 Je ne peux malheureusement pas vous donner de prix : chaque événement est unique, et le tarif dépend de la salle, de la date et des prestations choisies. C'est notre manager, " + KB.manager + ", qui établit un devis personnalisé — aucun tarif n'est affiché, ni ici ni sur le site.";
       case "capacity":
@@ -1598,7 +1987,7 @@ document.addEventListener("DOMContentLoaded", function () {
           return "• " + s.nom + " — quartier " + s.quartier;
         }).join("\n") + "\nSur le site, chaque fiche de salle a un bouton « 📍 Localisation » qui ouvre sa carte. L'adresse exacte et le point de rendez-vous sont confirmés par l'agence.";
       case "booking":
-        return "Seul notre manager, " + KB.manager + ", peut confirmer une disponibilité ou une réservation — de mon côté, je ne suis qu'une assistante automatique, je ne peux ni l'un ni l'autre. Continuez cette courte qualification : votre fiche lui sera transmise, et il reviendra vers vous personnellement.";
+        return "Seul notre manager, " + KB.manager + ", peut confirmer une disponibilité ou une réservation — de mon côté, je ne suis qu'une assistante stagiaire automatique, je ne peux ni l'un ni l'autre. Continuez cette courte qualification : votre fiche lui sera transmise, et il reviendra vers vous personnellement.";
       case "human":
         return "Je comprends tout à fait — rien ne remplace un échange humain 🙂 Notre manager est " + KB.manager + " : vous pouvez joindre l'agence directement sur WhatsApp au " + KB.whatsapp + " ou par e-mail à " + KB.email + ". Et je reste à votre disposition ici pour préparer votre demande — elle lui sera transmise.";
       case "prestations":
@@ -1625,9 +2014,43 @@ document.addEventListener("DOMContentLoaded", function () {
     return null;
   }
 
+  // Applique un choix à valeur unique (chip touché ou option reconnue dans le texte).
+  function applyChoice(value) {
+    switch (state.step) {
+      case "event_type":
+        state.answers.eventType = value; save();
+        botSay(eventWarmth(value));
+        ask("date", "Quelle date envisagez-vous pour votre " + value.toLowerCase() + " ? Vous pouvez l'écrire librement, par exemple : samedi 19 décembre 2026.");
+        break;
+      case "date_flex":
+        state.answers.dateFlex = value; save();
+        ask("guests", "« " + value + " », c'est bien noté 📝 Combien d'invités attendez-vous, environ ?");
+        break;
+      case "quartier":
+        state.answers.quartier = value; save();
+        ask("prestations", (value === "Pas de préférence"
+          ? "Aucune préférence de quartier, très bien — je le note 📝"
+          : "Quartier " + value + ", parfait, je le note 📝") +
+          "\n\nQuelles prestations souhaitez-vous ? Touchez celles qui vous intéressent, puis touchez « ✔ Valider ».");
+        break;
+      case "contact":
+        state.answers.contact = value; save();
+        state.fiche = buildFiche(false);
+        botSay("Merci ! Voici votre fiche de demande — prenez le temps de la vérifier, elle doit être complète et exacte :", "fiche");
+        botSay(state.fiche, "fiche");
+        ask("confirm", "Est-ce exact ? Si oui, touchez « C'est exact » et je transmets votre fiche au manager.");
+        break;
+    }
+  }
+
   function handleChip(chip) {
     var value = chip.value;
     if (value === "__restart__") { restart(); return; }
+    if (botBusy || botQueue.length) return; // Célia est en train d'écrire : on attend la fin de sa phrase.
+    if (value === "__guests_ok__") { userSay("C'est bien ça"); resolveGuestsConfirm(true); return; }
+    if (value === "__guests_fix__") { userSay("Je corrige"); resolveGuestsConfirm(false); return; }
+    if (value === "__date_ok__") { userSay("Oui, c'est aujourd'hui"); resolveDateToday(true); return; }
+    if (value === "__date_fix__") { userSay("Non, je corrige"); resolveDateToday(false); return; }
     if (state.step === "prestations" && chip.toggle) {
       var idx = state.answers.prestations.indexOf(value);
       if (idx === -1) state.answers.prestations.push(value);
@@ -1643,7 +2066,7 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
       userSay(state.answers.prestations.join(", "));
-      ask("budget", "Dernière petite question avant de vous proposer des salles : quel budget envisagez-vous pour votre événement ? C'est purement indicatif — seul le manager établit le devis, selon votre projet. Et si vous préférez ne pas répondre, aucun souci 🙂");
+      ask("budget", "Je note donc : " + state.answers.prestations.join(", ") + " 📝\n\nDernière petite question avant de vous proposer des salles : quel budget envisagez-vous pour votre événement ? C'est purement indicatif — seul le manager établit le devis, selon votre projet. Et si vous préférez ne pas répondre, aucun souci 🙂");
       return;
     }
     if (state.step === "budget" && value === "__skip_budget__") {
@@ -1661,35 +2084,42 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     // Réponses à choix unique
     userSay(value);
-    switch (state.step) {
-      case "event_type":
-        state.answers.eventType = value; save();
-        botSay(eventWarmth(value));
-        ask("date", "Quelle date envisagez-vous pour votre " + value.toLowerCase() + " ? Vous pouvez l'écrire librement, par exemple : samedi 19 décembre 2026.");
-        break;
-      case "date_flex":
-        state.answers.dateFlex = value; save();
-        ask("guests", "C'est noté, merci. Combien d'invités attendez-vous, environ ?");
-        break;
-      case "quartier":
-        state.answers.quartier = value; save();
-        ask("prestations", "Avec plaisir. Quelles prestations souhaitez-vous ? Touchez celles qui vous intéressent, puis touchez « ✔ Valider ».");
-        break;
-      case "contact":
-        state.answers.contact = value; save();
-        state.fiche = buildFiche(false);
-        botSay("Merci ! Voici votre fiche de demande — prenez le temps de la vérifier, elle doit être complète et exacte :", "fiche");
-        botSay(state.fiche, "fiche");
-        ask("confirm", "Est-ce exact ? Si oui, touchez « C'est exact » et je transmets votre fiche au manager.");
-        break;
-    }
+    applyChoice(value);
   }
 
-  function handleText(rawText) {
+  function submitUserText(text) {
+    if (!state.step) { startConversation(); }
+    userSay(text);
+    if (botBusy || botQueue.length) {
+      // Célia est en train d'écrire : la réponse est simplement mise en file.
+      userBacklog.push(text);
+      save();
+      return;
+    }
+    processUserText(text);
+  }
+
+  function processUserText(rawText) {
     var text = (rawText || "").trim();
     if (!text) return;
     if (!state.step) { startConversation(); }
-    userSay(text);
+
+    // Étapes de confirmation (invités > plafond, date = aujourd'hui) :
+    // la réponse attendue est directe, on la traite avant tout le reste.
+    if (state.step === "guests_confirm") {
+      var tg = norm(text);
+      if (/(corrige|non|erreur|zero de trop)/.test(tg)) { resolveGuestsConfirm(false); return; }
+      if (/(oui|exact|bien ca|c'est bien|ok|confirme|quand meme)/.test(tg)) { resolveGuestsConfirm(true); return; }
+      botSay("Dites-moi simplement « C'est bien ça » si le nombre vous convient, ou « Je corrige » si vous voulez le changer 🙂");
+      return;
+    }
+    if (state.step === "date_today") {
+      var td = norm(text);
+      if (/(corrige|non|erreur|pas aujourd)/.test(td)) { resolveDateToday(false); return; }
+      if (/(oui|exact|bien|ok|confirme|aujourd)/.test(td)) { resolveDateToday(true); return; }
+      botSay("Dites-moi simplement « Oui, c'est aujourd'hui » si la date est la bonne, ou « Non, je corrige » 🙂");
+      return;
+    }
 
     // Réponse tapée correspondant à un choix proposé ? On l'accepte d'abord.
     var stepOptions = {
@@ -1707,7 +2137,7 @@ document.addEventListener("DOMContentLoaded", function () {
           save(); renderChips();
           botSay("« " + mo + " » — c'est noté ✔ Ajoutez-en d'autres si vous voulez, puis touchez « ✔ Valider ».");
         } else {
-          handleChipValue(mo);
+          applyChoice(mo);
         }
         return;
       }
@@ -1724,36 +2154,26 @@ document.addEventListener("DOMContentLoaded", function () {
     switch (state.step) {
       case "event_type": {
         var m1 = matchOption(text, KB.typesEvenement);
-        if (m1) { handleChipValue(m1); } else {
+        if (m1) { applyChoice(m1); } else {
           botSay("Pardon, je n'ai pas reconnu ce type d'événement. Choisissez dans la liste ci-dessous, ou décrivez-moi votre projet avec vos mots.");
           reask();
         }
         break;
       }
       case "date":
-        state.answers.date = text; save();
-        ask("date_flex", "Cette date est-elle définitive, ou encore flexible ?");
+        processDate(text);
         break;
       case "date_flex": {
         var m2 = matchOption(text, ["Définitive", "Flexible"]);
-        if (m2) { handleChipValue(m2); } else { botSay("Dites-moi simplement si la date est définitive ou encore flexible."); reask(); }
+        if (m2) { applyChoice(m2); } else { botSay("Dites-moi simplement si la date est définitive ou encore flexible."); reask(); }
         break;
       }
-      case "guests": {
-        var cleaned = text.replace(/(\d)\s+(?=\d)/g, "$1");
-        var match = cleaned.match(/\d+/);
-        if (match) {
-          state.answers.guests = parseInt(match[0], 10); save();
-          ask("quartier", "Avez-vous un quartier préféré pour la salle ?");
-        } else {
-          botSay("Pardon, je n'ai pas bien saisi le nombre d'invités — indiquez-moi simplement un nombre, par exemple 150.");
-          reask();
-        }
+      case "guests":
+        processGuests(text);
         break;
-      }
       case "quartier": {
         var m3 = matchOption(text, KB.quartiers);
-        if (m3) { handleChipValue(m3); } else { botSay("Choisissez un quartier dans la liste, ou « Pas de préférence »."); reask(); }
+        if (m3) { applyChoice(m3); } else { botSay("Choisissez un quartier dans la liste, ou « Pas de préférence »."); reask(); }
         break;
       }
       case "prestations": {
@@ -1766,19 +2186,51 @@ document.addEventListener("DOMContentLoaded", function () {
         } else { botSay("Touchez les prestations qui vous intéressent dans la liste, puis « ✔ Valider »."); reask(); }
         break;
       }
-      case "budget":
-        state.answers.budget = text;
-        state.answers.budgetSkipped = false;
-        save();
-        proposeSalles();
+      case "budget": {
+        var bNum = extractNumber(text);
+        var bNorm = norm(text);
+        var isZeroBudget = (bNum === 0 && bNorm.length <= 14) || /^\s*-/.test(text);
+        if (isZeroBudget) {
+          state.answers.budget = "";
+          state.answers.budgetSkipped = true;
+          save();
+          botSay("Un budget de 0 franc… servir de l'air aux invités, ce serait dommage 😉 Je note donc « budget non communiqué » — le manager en discutera avec vous en toute tranquillité.");
+          proposeSalles();
+        } else {
+          // Montant chiffré ou texte libre (« à définir », « pas encore fixé »…) : on l'enregistre tel quel.
+          state.answers.budget = text;
+          state.answers.budgetSkipped = false;
+          save();
+          proposeSalles();
+        }
         break;
-      case "name":
-        state.answers.name = text; save();
-        ask("contact", "Enchantée, " + text + " ! Comment préférez-vous être recontacté par le manager ?");
+      }
+      case "name": {
+        var nm = text.trim();
+        if (nm.length < 2 || /^\d+$/.test(nm)) {
+          state.attempts.name++;
+          if (state.attempts.name >= 2) {
+            state.answers.name = nm;
+            state.answers.nameUnclear = true;
+            state.attempts.name = 0;
+            save();
+            botSay("Très bien, je le note ainsi — le manager confirmera votre nom avec vous, promis 🙂");
+            ask("contact", "Comment préférez-vous être recontacté par le manager ?");
+          } else {
+            save();
+            botSay("Pardon, je n'ai pas bien saisi votre nom — c'est ma faute, je débute 🙂 Pouvez-vous me redonner votre nom complet ?");
+          }
+        } else {
+          state.answers.name = nm;
+          state.attempts.name = 0;
+          save();
+          ask("contact", "Enchantée, " + nm + " ! Comment préférez-vous être recontacté par le manager ?");
+        }
         break;
+      }
       case "contact": {
         var m5 = matchOption(text, KB.contacts);
-        if (m5) { handleChipValue(m5); } else { botSay("Choisissez votre moyen de contact préféré dans la liste."); reask(); }
+        if (m5) { applyChoice(m5); } else { botSay("Choisissez votre moyen de contact préféré dans la liste."); reask(); }
         break;
       }
       case "confirm": {
@@ -1791,39 +2243,17 @@ document.addEventListener("DOMContentLoaded", function () {
         botSay("Votre demande est déjà complète et prête à être transmise au manager — merci encore ! 🌸 Si vous voulez modifier quelque chose, touchez « Recommencer » ci-dessus pour repartir de zéro. — " + ASSISTANTE);
         break;
       default:
-        botSay("Je suis " + ASSISTANTE + ", l'assistante d'AO Évents 🌸 Répondez à la question en cours, et je préparerai votre demande pour le manager avec plaisir.");
+        botSay("Je suis " + ASSISTANTE + ", l'assistante stagiaire d'AO Évents 🌸 Répondez à la question en cours, et je préparerai votre demande pour le manager avec plaisir.");
         reask();
-        break;
-    }
-  }
-  // Réutilise la logique des chips sans ré-afficher le message utilisateur deux fois.
-  function handleChipValue(value) {
-    // Le message utilisateur a déjà été affiché par handleText : on rejoue la partie "réponse".
-    switch (state.step) {
-      case "event_type":
-        state.answers.eventType = value; save();
-        botSay(eventWarmth(value));
-        ask("date", "Quelle date envisagez-vous pour votre " + value.toLowerCase() + " ? Vous pouvez l'écrire librement, par exemple : samedi 19 décembre 2026.");
-        break;
-      case "date_flex":
-        state.answers.dateFlex = value; save();
-        ask("guests", "C'est noté, merci. Combien d'invités attendez-vous, environ ?");
-        break;
-      case "quartier":
-        state.answers.quartier = value; save();
-        ask("prestations", "Avec plaisir. Quelles prestations souhaitez-vous ? Touchez celles qui vous intéressent, puis touchez « ✔ Valider ».");
-        break;
-      case "contact":
-        state.answers.contact = value; save();
-        state.fiche = buildFiche(false);
-        botSay("Merci ! Voici votre fiche de demande — prenez le temps de la vérifier, elle doit être complète et exacte :", "fiche");
-        botSay(state.fiche, "fiche");
-        ask("confirm", "Est-ce exact ? Si oui, touchez « C'est exact » et je transmets votre fiche au manager.");
         break;
     }
   }
 
   function restart() {
+    botQueue = [];
+    userBacklog = [];
+    botBusy = false;
+    hideTyping();
     try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
     state = freshState();
     renderAllMessages();
@@ -1843,7 +2273,7 @@ document.addEventListener("DOMContentLoaded", function () {
       renderChips();
     }
     scrollToBottom();
-    setTimeout(function () { input.focus(); }, 60);
+    setTimeout(function () { if (!input.disabled) input.focus(); }, 60);
   }
   function closeChat() {
     if (!panel) return;
@@ -1862,17 +2292,15 @@ document.addEventListener("DOMContentLoaded", function () {
   });
   form.addEventListener("submit", function (e) {
     e.preventDefault();
-    var text = input.value;
+    var text = input.value.trim();
     input.value = "";
-    handleText(text);
+    if (!text) return;
+    submitUserText(text);
   });
 
   /* ---------------- Restauration de la mémoire ---------------- */
   state = load();
-  if (state && state.step) {
-    // Conversation restaurée dès l'ouverture du panneau (voir openChat).
-    state = state;
-  } else {
+  if (!state) {
     state = freshState();
   }
 });
