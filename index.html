@@ -327,6 +327,40 @@ h3 { font-size: 1.25rem; }
 .salle-body h3 { margin-bottom: 0.35rem; }
 .salle-meta { color: var(--terracotta); font-weight: 600; font-size: 0.92rem; }
 
+/* ---------- Tarifs indicatifs (cartes salles) ---------- */
+.salle-tarifs {
+  margin-top: 0.9rem;
+  background: var(--creme);
+  border: 1px solid var(--creme-fonce);
+  border-left: 3px solid var(--or);
+  border-radius: 10px;
+  padding: 0.7rem 0.85rem 0.75rem;
+}
+.salle-tarifs-title {
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+  margin-bottom: 0.4rem;
+}
+.tarifs-list { list-style: none; margin: 0; padding: 0; }
+.tarifs-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.26rem 0;
+  border-bottom: 1px dashed rgba(180, 85, 45, 0.18);
+  font-size: 0.85rem;
+  color: var(--texte-doux);
+}
+.tarifs-list li:last-child { border-bottom: none; }
+.tarif-prix { font-weight: 700; color: var(--vert); white-space: nowrap; }
+.tarifs-note { margin-top: 0.5rem; font-size: 0.75rem; font-style: italic; color: var(--texte-doux); }
+.tarifs-rdv { font-size: 0.88rem; color: var(--texte); }
+
 /* ---------- Prestations ---------- */
 .prestations-grid {
   display: grid;
@@ -993,6 +1027,17 @@ h3 { font-size: 1.25rem; }
           <div class="salle-body">
             <h3>PRO Évents</h3>
             <p class="salle-meta">📍 Glass · 👥 250 pers.</p>
+            <div class="salle-tarifs">
+              <p class="salle-tarifs-title">Tarifs indicatifs</p>
+              <ul class="tarifs-list">
+                <li><span>50/60 pers.</span><span class="tarif-prix">1 000 000 FCFA</span></li>
+                <li><span>100 pers.</span><span class="tarif-prix">1 200 000 FCFA</span></li>
+                <li><span>150 pers.</span><span class="tarif-prix">1 500 000 FCFA</span></li>
+                <li><span>200 pers.</span><span class="tarif-prix">2 000 000 FCFA</span></li>
+                <li><span>250 pers.</span><span class="tarif-prix">2 500 000 FCFA</span></li>
+              </ul>
+              <p class="tarifs-note">Tarifs indicatifs — à confirmer auprès de l'agence.</p>
+            </div>
             <button type="button" class="btn-map js-open-map" data-salle="PRO Évents" data-query="PRO Évents Glass Tivoli Libreville Gabon">📍 Localisation</button>
           </div>
         </article>
@@ -1005,6 +1050,18 @@ h3 { font-size: 1.25rem; }
           <div class="salle-body">
             <h3>Christal Évents</h3>
             <p class="salle-meta">📍 Damas · 👥 300 pers.</p>
+            <div class="salle-tarifs">
+              <p class="salle-tarifs-title">Tarifs indicatifs</p>
+              <ul class="tarifs-list">
+                <li><span>50/60 pers.</span><span class="tarif-prix">1 000 000 FCFA</span></li>
+                <li><span>100 pers.</span><span class="tarif-prix">1 500 000 FCFA</span></li>
+                <li><span>150 pers.</span><span class="tarif-prix">2 000 000 FCFA</span></li>
+                <li><span>200 pers.</span><span class="tarif-prix">2 500 000 FCFA</span></li>
+                <li><span>250 pers.</span><span class="tarif-prix">3 000 000 FCFA</span></li>
+                <li><span>300 pers.</span><span class="tarif-prix">3 500 000 FCFA</span></li>
+              </ul>
+              <p class="tarifs-note">Tarifs indicatifs — à confirmer auprès de l'agence.</p>
+            </div>
             <button type="button" class="btn-map js-open-map" data-salle="Christal Évents" data-query="Christal Évents Damas Libreville Gabon">📍 Localisation</button>
           </div>
         </article>
@@ -1017,6 +1074,10 @@ h3 { font-size: 1.25rem; }
           <div class="salle-body">
             <h3>Vie d'Impact</h3>
             <p class="salle-meta">📍 Beau Séjour · 👥 250 + 50 pers.</p>
+            <div class="salle-tarifs">
+              <p class="salle-tarifs-title">Tarifs indicatifs</p>
+              <p class="tarifs-rdv">Tarifs établis sur rendez-vous — contactez le manager.</p>
+            </div>
             <button type="button" class="btn-map js-open-map" data-salle="Vie d'Impact" data-query="Vie d'Impact Beau Séjour Libreville Gabon">📍 Localisation</button>
           </div>
         </article>
@@ -1029,6 +1090,17 @@ h3 { font-size: 1.25rem; }
           <div class="salle-body">
             <h3>Christeneil</h3>
             <p class="salle-meta">📍 Ondogo · 👥 400 pers.</p>
+            <div class="salle-tarifs">
+              <p class="salle-tarifs-title">Tarifs indicatifs</p>
+              <ul class="tarifs-list">
+                <li><span>150 pers.</span><span class="tarif-prix">3 000 000 FCFA</span></li>
+                <li><span>200 pers.</span><span class="tarif-prix">3 500 000 FCFA</span></li>
+                <li><span>250 pers.</span><span class="tarif-prix">3 800 000 FCFA</span></li>
+                <li><span>350 pers.</span><span class="tarif-prix">4 000 000 FCFA</span></li>
+                <li><span>400 pers.</span><span class="tarif-prix">4 800 000 FCFA</span></li>
+              </ul>
+              <p class="tarifs-note">Tarifs indicatifs — à confirmer auprès de l'agence.</p>
+            </div>
             <button type="button" class="btn-map js-open-map" data-salle="Christeneil" data-query="Christeneil Ondogo Libreville Gabon">📍 Localisation</button>
           </div>
         </article>
@@ -1041,6 +1113,15 @@ h3 { font-size: 1.25rem; }
           <div class="salle-body">
             <h3>SC Évents</h3>
             <p class="salle-meta">📍 PK12 · 👥 200 à 300 pers.</p>
+            <div class="salle-tarifs">
+              <p class="salle-tarifs-title">Tarifs indicatifs</p>
+              <ul class="tarifs-list">
+                <li><span>200 pers.</span><span class="tarif-prix">1 500 000 FCFA</span></li>
+                <li><span>250 pers.</span><span class="tarif-prix">1 800 000 FCFA</span></li>
+                <li><span>300 pers.</span><span class="tarif-prix">2 000 000 FCFA</span></li>
+              </ul>
+              <p class="tarifs-note">Tarifs indicatifs — à confirmer auprès de l'agence.</p>
+            </div>
             <button type="button" class="btn-map js-open-map" data-salle="SC Évents" data-query="SC Évents PK12 Libreville Gabon">📍 Localisation</button>
           </div>
         </article>
@@ -1053,12 +1134,23 @@ h3 { font-size: 1.25rem; }
           <div class="salle-body">
             <h3>Les Fujis</h3>
             <p class="salle-meta">📍 Charbonnages · 👥 200 pers. en intérieur + 50 en extérieur</p>
+            <div class="salle-tarifs">
+              <p class="salle-tarifs-title">Tarifs indicatifs</p>
+              <ul class="tarifs-list">
+                <li><span>50/60 pers.</span><span class="tarif-prix">1 000 000 FCFA</span></li>
+                <li><span>100 pers.</span><span class="tarif-prix">1 000 000 FCFA</span></li>
+                <li><span>150 pers.</span><span class="tarif-prix">1 500 000 FCFA</span></li>
+                <li><span>200 pers.</span><span class="tarif-prix">2 000 000 FCFA</span></li>
+                <li><span>250 pers.</span><span class="tarif-prix">2 500 000 FCFA</span></li>
+              </ul>
+              <p class="tarifs-note">Tarifs indicatifs — à confirmer auprès de l'agence.</p>
+            </div>
             <button type="button" class="btn-map js-open-map" data-salle="Les Fujis" data-query="Les Fujis Charbonnages Libreville Gabon">📍 Localisation</button>
           </div>
         </article>
 
       </div>
-      <p class="section-note">Les capacités ci-dessus sont issues de la base de connaissance révisée de l'agence ; leur confirmation finale est en cours. Aucun tarif n'est affiché en ligne : chaque devis est établi par le manager, selon votre projet.</p>
+      <p class="section-note">Les capacités ci-dessus sont issues de la base de connaissance révisée de l'agence ; leur confirmation finale est en cours. Les tarifs affichés sont indicatifs : chaque devis est confirmé par le manager après étude de votre demande.</p>
     </div>
   </section>
 
@@ -1170,7 +1262,7 @@ h3 { font-size: 1.25rem; }
 
         <div class="faq-item">
           <button class="faq-q" aria-expanded="false">Combien coûte un événement ?</button>
-          <div class="faq-a"><p>Chaque événement est unique : le tarif dépend de la salle, de la date et des prestations choisies. Il est établi par notre manager dans un devis personnalisé — aucun prix n'est donc affiché sur ce site.</p></div>
+          <div class="faq-a"><p>Le coût dépend du nombre d'invités, de la salle et des prestations choisies. À titre indicatif, la grille de chaque salle est affichée sur sa fiche, dans la section Nos salles. Le tarif définitif est toujours confirmé par notre manager dans un devis personnalisé.</p></div>
         </div>
 
         <div class="faq-item">
@@ -1307,8 +1399,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
 /* ============================================================
    AO Évents — Modale Google Maps + Célia, assistante stagiaire (démo)
-   JS vanilla, aucune librairie externe. Aucun prix n'est jamais
-   affiché ; seul le manager confirme disponibilité et réservation.
+   JS vanilla, aucune librairie externe. L'assistante ne cite jamais
+   de prix ; seul le manager confirme tarifs, disponibilité et réservation.
    Célia vérifie la cohérence des réponses (invités, dates, nom,
    budget) avec empathie et un humour léger, sans jamais bloquer
    définitivement un visiteur : après 2 tentatives ratées sur un
@@ -1977,7 +2069,7 @@ document.addEventListener("DOMContentLoaded", function () {
       case "identity":
         return "Je m'appelle " + ASSISTANTE + " 🌸 Je suis l'assistante stagiaire automatique d'AO Évents — un programme, donc pas un humain, même si j'essaie d'être aussi chaleureuse que possible 🙂 Je suis en formation, supervisée par notre manager, " + KB.manager + ", à qui je transmets chaque demande. Vous pouvez aussi le joindre directement sur WhatsApp au " + KB.whatsapp + " ou par e-mail à " + KB.email + ".";
       case "price":
-        return "C'est une question tout à fait légitime 🙂 Je ne peux malheureusement pas vous donner de prix : chaque événement est unique, et le tarif dépend de la salle, de la date et des prestations choisies. C'est notre manager, " + KB.manager + ", qui établit un devis personnalisé — aucun tarif n'est affiché, ni ici ni sur le site.";
+        return "C'est une question tout à fait légitime 🙂 Je n'ai pas de tarif définitif à vous annoncer moi-même : chaque événement est unique, et le tarif dépend de la salle, de la date et des prestations choisies. Vous trouverez bien des grilles affichées sur les fiches de nos salles, mais elles sont indicatives — seul notre manager, " + KB.manager + ", confirme le tarif exact dans un devis personnalisé.";
       case "capacity":
         return "Voici les capacités de nos 6 salles partenaires :\n" + KB.salles.map(function (s) {
           return "• " + s.nom + " (" + s.quartier + ") : " + s.capLabel;
